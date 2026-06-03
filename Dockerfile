@@ -24,7 +24,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # 复制 requirements.txt 并使用镜像安装 Python 依赖
 COPY requirements.txt .
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+RUN pip install --upgrade pip && \ 
+    pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 120 -r requirements.txt
 
 # 运行阶段
 FROM python:3.12-slim-bookworm
@@ -56,6 +57,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git-lfs \
     ca-certificates \
     dos2unix \
+    gosu \
     && sed -i 's/<policy domain="path" rights="none" pattern="@\*"/<policy domain="path" rights="read|write" pattern="@\*"/' /etc/ImageMagick-6/policy.xml || true \
     && git lfs install \
     && groupadd -r narratoai && useradd -r -g narratoai -d /NarratoAI -s /bin/bash narratoai \
@@ -74,8 +76,8 @@ RUN mkdir -p storage/temp storage/tasks storage/json storage/narration_scripts s
     chown -R narratoai:narratoai /NarratoAI && \
     chmod -R 755 /NarratoAI
 
-# 切换到非 root 用户
-USER narratoai
+# 保持 root 启动入口脚本，用于修复 bind mount 目录权限；应用进程会在入口脚本中降权运行
+USER root
 
 # 暴露端口
 EXPOSE 8501
