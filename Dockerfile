@@ -8,7 +8,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /build
 
 # 安装构建依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tuna.tsinghua.edu.cn/debian|g; s|http://deb.debian.org/debian-security|https://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=120 -o Acquire::https::Timeout=120 && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     git-lfs \
@@ -49,7 +50,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
     LC_ALL=C.UTF-8
 
 # 一次性安装所有依赖、创建用户、配置系统，减少层级
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tuna.tsinghua.edu.cn/debian|g; s|http://deb.debian.org/debian-security|https://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=120 -o Acquire::https::Timeout=120 && apt-get install -y --no-install-recommends \
     imagemagick \
     ffmpeg \
     wget \

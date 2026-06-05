@@ -10,9 +10,9 @@ from loguru import logger
 from app.config import config
 from app.services.documentary.frame_analysis_service import DocumentaryFrameAnalysisService
 
-
+# 标准化进度值
 def _normalize_progress_value(progress: float | int) -> int:
-    """Normalize mixed progress inputs to Streamlit's 0-100 integer range."""
+    """将混合进度输入标准化为Streamlit的0-100整数范围."""
     try:
         value = float(progress)
     except (TypeError, ValueError):
@@ -23,7 +23,7 @@ def _normalize_progress_value(progress: float | int) -> int:
 
     return max(0, min(100, int(round(value))))
 
-
+# 生成纪录片视频脚本
 def generate_script_docu(params):
     """
     生成纪录片视频脚本。
@@ -93,7 +93,7 @@ def generate_script_docu(params):
                     max_concurrency=vision_max_concurrency,
                 )
             )
-
+            logger.info(script_items)
             logger.info(f"纪录片解说脚本生成完成，共 {len(script_items)} 个片段")
             script = json.dumps(script_items, ensure_ascii=False, indent=2)
             if isinstance(script, list):

@@ -279,7 +279,10 @@ JSON 必须包含以下键：
         except (TypeError, ValueError):
             parsed = 1
         return max(1, parsed)
-
+        
+    #    """
+    #    从缓存或提取视频的关键帧列表
+    #    """    
     def _load_or_extract_keyframes(self, video_path: str, frame_interval_seconds: float) -> list[str]:
         keyframes_root = os.path.join(utils.temp_dir(), "keyframes")
         os.makedirs(keyframes_root, exist_ok=True)

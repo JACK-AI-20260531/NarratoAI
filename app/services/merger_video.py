@@ -661,15 +661,15 @@ def combine_clip_videos(
 
 if __name__ == '__main__':
     video_paths = [
-        '/Users/apple/Desktop/home/NarratoAI/storage/temp/clip_video/S01E02_00_14_09_440.mp4',
-        '/Users/apple/Desktop/home/NarratoAI/storage/temp/clip_video/S01E08_00_27_11_110.mp4',
-        '/Users/apple/Desktop/home/NarratoAI/storage/temp/clip_video/S01E08_00_34_44_480.mp4',
-        '/Users/apple/Desktop/home/NarratoAI/storage/temp/clip_video/S01E08_00_42_47_630.mp4',
-        '/Users/apple/Desktop/home/NarratoAI/storage/temp/clip_video/S01E09_00_29_48_160.mp4'
+        'F:/ai_work/NarratoAI/storage/temp/clip_video/S01E02_00_14_09_440.mp4',
+        'F:/ai_work/NarratoAI/storage/temp/clip_video/S01E08_00_27_11_110.mp4',
+        'F:/ai_work/NarratoAI/storage/temp/clip_video/S01E08_00_34_44_480.mp4',
+        'F:/ai_work/NarratoAI/storage/temp/clip_video/S01E08_00_42_47_630.mp4',
+        'F:/ai_work/NarratoAI/storage/temp/clip_video/S01E09_00_29_48_160.mp4'
         ]
 
     combine_clip_videos(
-        output_video_path="/Users/apple/Desktop/home/NarratoAI/storage/temp/merge/merged_123.mp4",
+        output_video_path="F:/ai_work/NarratoAI/storage/temp/merge/merged_123.mp4",
         video_paths=video_paths,
         video_ost_list=[1, 1, 1,1,1],
         video_aspect=VideoAspect.portrait,
