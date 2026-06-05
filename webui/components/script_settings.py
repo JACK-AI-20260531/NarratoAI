@@ -287,7 +287,7 @@ def render_short_generate_options(tr):
     )
     st.session_state['custom_clips'] = custom_clips
 
-
+# AI生成画面解说 渲染视频主题和提示词
 def render_video_details(tr):
     """画面解说 渲染视频主题和提示词"""
     video_theme = st.text_input(tr("Video Theme"))

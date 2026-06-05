@@ -33,8 +33,11 @@ def generate_script_docu(params):
     progress_bar = st.progress(0)
     status_text = st.empty()
 
+    # 更新进度条和状态文本
     def update_progress(progress: float, message: str = ""):
+        # 标准化进度值
         normalized_progress = _normalize_progress_value(progress)
+        # 更新进度条
         progress_bar.progress(normalized_progress)
         if message:
             status_text.text(f"🎬 {message}")
@@ -105,7 +108,7 @@ def generate_script_docu(params):
         time.sleep(0.1)
         progress_bar.progress(100)
         status_text.text("🎉 脚本生成完成！")
-        st.success("✅ 视频脚本生成成功！")
+        st.success("✅纪录片视频脚本生成成功！")
 
     except Exception as err:
         st.error(f"❌ 生成过程中发生错误: {str(err)}")

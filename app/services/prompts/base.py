@@ -40,7 +40,7 @@ class PromptMetadata:
     description: str                    # 描述
     model_type: ModelType              # 适用的模型类型
     output_format: OutputFormat        # 输出格式
-    author: str = "viccy同学"       # 作者
+    author: str = "jack"       # 作者
     created_at: datetime = field(default_factory=datetime.now)  # 创建时间
     updated_at: datetime = field(default_factory=datetime.now)  # 更新时间
     tags: List[str] = field(default_factory=list)  # 标签
