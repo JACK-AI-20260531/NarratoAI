@@ -127,7 +127,9 @@ git clone https://github.com/linyqh/NarratoAI.git
 cd NarratoAI
 
 # 2. 安装依赖
-pip install -r requirements.txt
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple/ -r requirements.txt
+或者
+pip install -i https://mirrors.aliyun.com/pypi/simple/  -r requirements.txt
 
 # 3. 复制配置文件
 cp config.example.toml config.toml
