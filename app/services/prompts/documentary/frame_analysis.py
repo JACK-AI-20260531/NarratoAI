@@ -17,16 +17,16 @@ class FrameAnalysisPrompt(VisionPrompt):
     
     def __init__(self):
         metadata = PromptMetadata(
-            name="frame_analysis",
-            category="documentary",
-            version="v1.0",
-            description="分析纪录片视频关键帧，提取画面内容和场景描述",
-            model_type=ModelType.VISION,
-            output_format=OutputFormat.JSON,
-            tags=["纪录片", "视频分析", "关键帧", "画面描述"],
-            parameters=["video_theme", "custom_instructions"]
+            name="frame_analysis", # 提示词名称：视频帧分析
+            category="documentary", # 提示词分类：纪录片
+            version="v1.0", # 提示词版本：v1.0
+            description="分析纪录片视频关键帧，提取画面内容和场景描述", # 提示词描述：分析纪录片视频关键帧，提取画面内容和场景描述
+            model_type=ModelType.VISION, # 提示词模型类型：视觉模型
+            output_format=OutputFormat.JSON, # 提示词输出格式：JSON
+            tags=["纪录片", "视频分析", "关键帧", "画面描述"], # 提示词标签：纪录片、视频分析、关键帧、画面描述
+            parameters=["video_theme", "custom_instructions"] # 提示词参数：视频主题、自定义指令
         )
-        super().__init__(metadata)
+        super().__init__(metadata)  
         
         self._system_prompt = "你是一名专业的视频内容分析师，擅长分析纪录片视频帧内容，提取关键信息和场景描述。"
         

@@ -10,9 +10,9 @@ from loguru import logger
 from app.config import config
 from app.services.documentary.frame_analysis_service import DocumentaryFrameAnalysisService
 
-
+# 标准化进度值
 def _normalize_progress_value(progress: float | int) -> int:
-    """Normalize mixed progress inputs to Streamlit's 0-100 integer range."""
+    """将混合进度输入标准化为Streamlit的0-100整数范围."""
     try:
         value = float(progress)
     except (TypeError, ValueError):
@@ -23,7 +23,7 @@ def _normalize_progress_value(progress: float | int) -> int:
 
     return max(0, min(100, int(round(value))))
 
-
+# 生成纪录片视频脚本
 def generate_script_docu(params):
     """
     生成纪录片视频脚本。
@@ -33,8 +33,11 @@ def generate_script_docu(params):
     progress_bar = st.progress(0)
     status_text = st.empty()
 
+    # 更新进度条和状态文本
     def update_progress(progress: float, message: str = ""):
+        # 标准化进度值
         normalized_progress = _normalize_progress_value(progress)
+        # 更新进度条
         progress_bar.progress(normalized_progress)
         if message:
             status_text.text(f"🎬 {message}")
@@ -93,7 +96,7 @@ def generate_script_docu(params):
                     max_concurrency=vision_max_concurrency,
                 )
             )
-
+            logger.info(script_items)
             logger.info(f"纪录片解说脚本生成完成，共 {len(script_items)} 个片段")
             script = json.dumps(script_items, ensure_ascii=False, indent=2)
             if isinstance(script, list):
@@ -105,7 +108,7 @@ def generate_script_docu(params):
         time.sleep(0.1)
         progress_bar.progress(100)
         status_text.text("🎉 脚本生成完成！")
-        st.success("✅ 视频脚本生成成功！")
+        st.success("✅纪录片视频脚本生成成功！")
 
     except Exception as err:
         st.error(f"❌ 生成过程中发生错误: {str(err)}")

@@ -279,24 +279,38 @@ JSON 必须包含以下键：
         except (TypeError, ValueError):
             parsed = 1
         return max(1, parsed)
-
+        
+    #    """
+    #    从缓存或提取视频的关键帧列表
+    #    """    
     def _load_or_extract_keyframes(self, video_path: str, frame_interval_seconds: float) -> list[str]:
         keyframes_root = os.path.join(utils.temp_dir(), "keyframes")
         os.makedirs(keyframes_root, exist_ok=True)
+        # 构建缓存键
         cache_key = self._build_keyframe_cache_key(video_path, frame_interval_seconds)
+        logger.info(f"缓存键: {cache_key}")
         cache_dir = os.path.join(keyframes_root, cache_key)
+        logger.info(f"缓存目录: {cache_dir}")
         os.makedirs(cache_dir, exist_ok=True)
 
         cached_files = self._collect_keyframe_paths(cache_dir)
+        logger.info(f"缓存目录已缓存关键帧: {cached_files}")
+
         if cached_files:
             logger.info(f"使用已缓存关键帧: {cache_dir}, 共 {len(cached_files)} 帧")
             return cached_files
 
+        # 提取视频关键帧
         processor = video_processor.VideoProcessor(video_path)
+        logger.info(f"视频路径: {video_path}")
+        logger.info(f"提取关键帧间隔: {frame_interval_seconds} 秒")
         extracted = processor.extract_frames_by_interval_with_fallback(
             output_dir=cache_dir,
             interval_seconds=frame_interval_seconds,
         )
+        logger.info(f"提取到的文件: {extracted}")
+
+        # 过滤出jpg文件
         keyframe_files = sorted(str(path) for path in extracted if str(path).endswith(".jpg"))
         if not keyframe_files:
             keyframe_files = self._collect_keyframe_paths(cache_dir)
@@ -306,6 +320,9 @@ JSON 必须包含以下键：
         logger.info(f"关键帧提取完成: {cache_dir}, 共 {len(keyframe_files)} 帧")
         return keyframe_files
 
+    """
+    构建关键帧缓存键
+    """
     def _build_keyframe_cache_key(self, video_path: str, frame_interval_seconds: float) -> str:
         try:
             video_mtime = os.path.getmtime(video_path)

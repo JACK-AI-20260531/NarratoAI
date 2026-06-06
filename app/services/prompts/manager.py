@@ -215,6 +215,11 @@ class PromptManager:
         """
         instance = cls()
         prompt_obj = instance._registry.get(category, name, version)
+
+        template1= prompt_obj.get_template()[:500] + "..." if len(prompt_obj.get_template()) > 500 else prompt_obj.get_template()
+        logger.info("---------------------------------------------------------------")
+        logger.info(template1)
+        logger.info("---------------------------------------------------------------")
         
         return {
             "metadata": {

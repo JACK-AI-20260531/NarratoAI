@@ -6,6 +6,15 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
+# 函数：以应用用户执行命令
+run_as_app_user() {
+    if [ "$(id -u)" = "0" ]; then
+        exec gosu narratoai "$@"
+    fi
+
+    exec "$@"
+}
+
 # 函数：安装运行时依赖
 install_runtime_dependencies() {
     log "检查并安装运行时依赖..."
@@ -82,6 +91,8 @@ check_requirements() {
             mkdir -p "$dir"
         fi
     done
+
+    chown -R narratoai:narratoai storage
     
     # 安装运行时依赖
     install_runtime_dependencies
@@ -101,7 +112,7 @@ start_webui() {
     fi
 
     # 启动 Streamlit 应用
-    exec streamlit run webui.py \
+    run_as_app_user streamlit run webui.py \
         --server.address=0.0.0.0 \
         --server.port=8501 \
         --server.enableCORS=true \
@@ -125,7 +136,7 @@ case "$1" in
         ;;
     "bash"|"sh")
         log "启动交互式 shell..."
-        exec /bin/bash
+        run_as_app_user /bin/bash
         ;;
     "health")
         # 健康检查命令

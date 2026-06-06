@@ -41,6 +41,11 @@ class VideoProcessor:
         self.width = int(self.video_info.get('width', 0))
         self.height = int(self.video_info.get('height', 0))
         self.total_frames = int(self.fps * self.duration)
+    
+        logger.info(
+            f"视频信息: 总帧数={self.total_frames}, 时长={self.duration:.2f}秒, "
+            f"宽度={self.width}, 高度={self.height}, 帧率={self.fps:.2f}"
+        )
 
     def _get_video_info(self) -> Dict[str, str]:
         """
@@ -59,7 +64,13 @@ class VideoProcessor:
         ]
 
         try:
+            logger.info(f"执行命令: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            logger.info(f"ffprobe返回码: {result.returncode}")
+            logger.info(f"ffprobe输出: {result.stdout}")
+            logger.info(f"ffprobe错误输出: {result.stderr}")
+            
             lines = result.stdout.strip().split('\n')
             info = {}
             for line in lines:
@@ -75,6 +86,7 @@ class VideoProcessor:
                 except ValueError:
                     info['fps'] = info.get('r_frame_rate', '25')
 
+            logger.info(f"ffprobe输出: {info}")
             return info
 
         except subprocess.CalledProcessError as e:
@@ -86,6 +98,7 @@ class VideoProcessor:
                 'duration': '0'
             }
 
+    # 提取视频帧
     def extract_frames_by_interval(self, output_dir: str, interval_seconds: float = 5.0,
                                   use_hw_accel: bool = True) -> List[int]:
         """
@@ -128,7 +141,8 @@ class VideoProcessor:
         failed_extractions = 0
 
         logger.info(f"开始提取 {len(extraction_times)} 个关键帧，使用 {hwaccel_type} 加速")
-
+        
+        # 提取帧 - 使用优化的进度条
         with tqdm(total=len(extraction_times), desc="🎬 提取视频帧", unit="帧",
                  bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]") as pbar:
             for i, timestamp in enumerate(extraction_times):

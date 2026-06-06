@@ -113,6 +113,7 @@ class OpenAICompatibleVisionProvider(_OpenAICompatibleBase, VisionModelProvider)
             for index in range(0, len(processed_images), batch_size)
         ]
 
+        # 并发处理每个批次
         async def run_batch(batch_index: int, batch: List[PIL.Image.Image]) -> tuple[int, str]:
             logger.info(f"处理第 {batch_index + 1} 批，共 {len(batch)} 张图片")
             async with semaphore:
@@ -127,6 +128,7 @@ class OpenAICompatibleVisionProvider(_OpenAICompatibleBase, VisionModelProvider)
         completed.sort(key=lambda item: item[0])
         return [result for _, result in completed]
 
+    # 分析单批次图片
     async def _analyze_batch(self, batch: List[PIL.Image.Image], prompt: str, **kwargs) -> str:
         content = [{"type": "text", "text": prompt}]
         for img in batch:
