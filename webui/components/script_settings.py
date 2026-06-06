@@ -13,6 +13,14 @@ from app.utils import utils, check_script
 from webui.tools.generate_script_docu import generate_script_docu
 from webui.tools.generate_script_short import generate_script_short
 from webui.tools.generate_short_summary import generate_script_short_sunmmary
+from webui.tools.movie_commentary import (
+    build_movie_montage,
+    is_movie_montage_running,
+    is_movie_scene_matching_running,
+    match_movie_scenes,
+    render_movie_montage_status,
+    render_movie_scene_match_status,
+)
 
 
 def render_script_panel(tr):
@@ -40,6 +48,12 @@ def render_script_panel(tr):
         elif script_path == "summary":
             # 短剧解说
             short_drama_summary(tr)
+        elif script_path == "movie_commentary":
+            # 电影原片解说
+            render_movie_commentary_options(tr)
+        elif script_path == "movie_montage":
+            # 电影混剪
+            render_movie_montage_options(tr)
         else:
             # 默认为空
             pass
@@ -55,6 +69,8 @@ def render_script_file(tr, params):
     MODE_AUTO = "auto"
     MODE_SHORT = "short"
     MODE_SUMMARY = "summary"
+    MODE_MOVIE_COMMENTARY = "movie_commentary"
+    MODE_MOVIE_MONTAGE = "movie_montage"
 
     # 处理保存脚本后的模式切换（必须在 widget 实例化之前）
     if st.session_state.get('_switch_to_file_mode'):
@@ -67,6 +83,8 @@ def render_script_file(tr, params):
         tr("Auto Generate"): MODE_AUTO,
         tr("Short Generate"): MODE_SHORT,
         tr("Short Drama Summary"): MODE_SUMMARY,
+        "电影原片解说": MODE_MOVIE_COMMENTARY,
+        "电影混剪": MODE_MOVIE_MONTAGE,
     }
     
     # 获取当前状态
@@ -82,6 +100,10 @@ def render_script_file(tr, params):
         default_index = mode_keys.index(tr("Short Generate"))
     elif current_path == "summary":
         default_index = mode_keys.index(tr("Short Drama Summary"))
+    elif current_path == "movie_commentary":
+        default_index = mode_keys.index("电影原片解说")
+    elif current_path == "movie_montage":
+        default_index = mode_keys.index("电影混剪")
     else:
         default_index = mode_keys.index(tr("Select/Upload Script"))
 
@@ -94,10 +116,14 @@ def render_script_file(tr, params):
         # 获取当前选中的标签
         selected_label = st.session_state.script_mode_selection
         if selected_label:
-            # 更新实际的 path 状态
+            # 更新实际的 path 状态；文件选择模式不是脚本路径，不写入占位值
             new_mode = mode_options[selected_label]
-            st.session_state.video_clip_json_path = new_mode
-            params.video_clip_json_path = new_mode
+            if new_mode == MODE_FILE:
+                st.session_state.video_clip_json_path = ""
+                params.video_clip_json_path = ""
+            else:
+                st.session_state.video_clip_json_path = new_mode
+                params.video_clip_json_path = new_mode
         else:
             # 如果用户取消选择（segmented_control 允许取消），恢复到默认或上一个状态
             # 这里我们强制保持当前状态，或者重置为默认
@@ -145,8 +171,9 @@ def render_script_file(tr, params):
             script_list.append((display_name, file['file']))
 
         # 找到保存的脚本文件在列表中的索引
-        # 如果当前path是特殊值(auto/short/summary)，则重置为空
-        saved_script_path = current_path if current_path not in [MODE_AUTO, MODE_SHORT, MODE_SUMMARY] else ""
+        # 如果当前 path 是功能模式或占位值，则重置为空
+        mode_values = {MODE_FILE, MODE_AUTO, MODE_SHORT, MODE_SUMMARY, MODE_MOVIE_COMMENTARY, MODE_MOVIE_MONTAGE, "upload_script"}
+        saved_script_path = current_path if current_path not in mode_values else ""
         
         selected_index = 0
         for i, (_, path) in enumerate(script_list):
@@ -286,6 +313,118 @@ def render_short_generate_options(tr):
         key="custom_clips_input"
     )
     st.session_state['custom_clips'] = custom_clips
+
+def render_movie_commentary_options(tr, key_prefix="movie_commentary"):
+    """电影原片解说模式：根据解说脚本匹配原片画面。"""
+    st.markdown("**电影原片解说**")
+    render_movie_scene_match_status()
+
+    commentary_script = st.text_area(
+        "电影原片解说脚本",
+        value=st.session_state.get('movie_commentary_script', ''),
+        height=180,
+        placeholder="粘贴或输入你的电影解说文案，点击下方按钮后会按文案匹配原始电影画面。",
+        key=f"{key_prefix}_script_input",
+    )
+    st.session_state['movie_commentary_script'] = commentary_script
+
+    option_cols = st.columns(3)
+    with option_cols[0]:
+        st.number_input(
+            tr("Frame Interval (seconds)"),
+            min_value=1,
+            value=st.session_state.get('frame_interval_input', config.frames.get('frame_interval_input', 3)),
+            help="抽取原片关键帧的间隔，数值越小匹配越细，但消耗更多视觉模型 token。",
+            key=f"{key_prefix}_frame_interval_input",
+        )
+        st.session_state['frame_interval_input'] = st.session_state.get(f"{key_prefix}_frame_interval_input")
+    with option_cols[1]:
+        st.number_input(
+            tr("Batch Size"),
+            min_value=1,
+            value=st.session_state.get('vision_batch_size', config.frames.get('vision_batch_size', 10)),
+            help="每批送入视觉模型分析的关键帧数量。",
+            key=f"{key_prefix}_vision_batch_size",
+        )
+        st.session_state['vision_batch_size'] = st.session_state.get(f"{key_prefix}_vision_batch_size")
+    with option_cols[2]:
+        st.number_input(
+            "候选画面数",
+            min_value=1,
+            max_value=10,
+            value=st.session_state.get('movie_match_top_k', 3),
+            help="每段解说保留的候选原片画面数量。",
+            key=f"{key_prefix}_match_top_k",
+        )
+        st.session_state['movie_match_top_k'] = st.session_state.get(f"{key_prefix}_match_top_k")
+
+
+def render_movie_montage_options(tr, key_prefix="movie_montage"):
+    """电影混剪模式：按主题从原片挑选镜头。"""
+    st.markdown("**电影混剪**")
+    st.caption("输入混剪主题或关键词，系统会从原始电影中自动挑选相关高能片段，生成可编辑的视频脚本。")
+    render_movie_montage_status()
+
+    theme_key = f"{key_prefix}_theme_input"
+    clip_count_key = f"{key_prefix}_clip_count_input"
+    clip_duration_key = f"{key_prefix}_clip_duration_input"
+    if theme_key not in st.session_state:
+        st.session_state[theme_key] = st.session_state.get('movie_montage_theme', '')
+    if clip_count_key not in st.session_state:
+        st.session_state[clip_count_key] = st.session_state.get('movie_montage_clip_count', 8)
+    if clip_duration_key not in st.session_state:
+        st.session_state[clip_duration_key] = st.session_state.get('movie_montage_clip_duration', 3.0)
+
+    st.text_area(
+        "混剪主题 / 关键词",
+        height=100,
+        placeholder="例如：男主高能反击、悬疑反转、爱情名场面、动作追逐、悲伤催泪片段",
+        key=theme_key,
+        on_change=lambda: st.session_state.update({'movie_montage_theme': st.session_state.get(theme_key, '')}),
+    )
+    st.session_state['movie_montage_theme'] = st.session_state.get(theme_key, '')
+
+    option_cols = st.columns(4)
+    with option_cols[0]:
+        st.number_input(
+            tr("Frame Interval (seconds)"),
+            min_value=1,
+            value=st.session_state.get('frame_interval_input', config.frames.get('frame_interval_input', 3)),
+            help="抽取原片关键帧的间隔，数值越小匹配越细，但消耗更多视觉模型 token。",
+            key=f"{key_prefix}_frame_interval_input",
+        )
+        st.session_state['frame_interval_input'] = st.session_state.get(f"{key_prefix}_frame_interval_input")
+    with option_cols[1]:
+        st.number_input(
+            tr("Batch Size"),
+            min_value=1,
+            value=st.session_state.get('vision_batch_size', config.frames.get('vision_batch_size', 10)),
+            help="每批送入视觉模型分析的关键帧数量。",
+            key=f"{key_prefix}_vision_batch_size",
+        )
+        st.session_state['vision_batch_size'] = st.session_state.get(f"{key_prefix}_vision_batch_size")
+    with option_cols[2]:
+        st.number_input(
+            "混剪片段数",
+            min_value=1,
+            max_value=50,
+            help="最终混剪脚本中生成多少个原片片段。",
+            key=clip_count_key,
+            on_change=lambda: st.session_state.update({'movie_montage_clip_count': st.session_state.get(clip_count_key, 8)}),
+        )
+        st.session_state['movie_montage_clip_count'] = st.session_state.get(clip_count_key, 8)
+    with option_cols[3]:
+        st.number_input(
+            "单段时长（秒）",
+            min_value=1.0,
+            max_value=30.0,
+            step=0.5,
+            help="每个混剪镜头默认截取的时长。",
+            key=clip_duration_key,
+            on_change=lambda: st.session_state.update({'movie_montage_clip_duration': st.session_state.get(clip_duration_key, 3.0)}),
+        )
+        st.session_state['movie_montage_clip_duration'] = st.session_state.get(clip_duration_key, 3.0)
+
 
 # AI生成画面解说 渲染视频主题和提示词
 def render_video_details(tr):
@@ -504,12 +643,21 @@ def render_script_buttons(tr, params):
         button_name = tr("Generate Short Video Script")
     elif script_path == "summary":
         button_name = tr("生成短剧解说脚本")
+    elif script_path == "movie_commentary":
+        button_name = "匹配原片画面"
+    elif script_path == "movie_montage":
+        button_name = "生成电影混剪"
     elif script_path.endswith("json"):
         button_name = tr("Load Video Script")
     else:
         button_name = tr("Please Select Script File")
 
-    if st.button(button_name, key="script_action", disabled=not script_path):
+    action_disabled = (
+        not script_path
+        or (script_path == "movie_commentary" and is_movie_scene_matching_running())
+        or (script_path == "movie_montage" and is_movie_montage_running())
+    )
+    if st.button(button_name, key="script_action", disabled=action_disabled):
         if script_path == "auto":
             # 执行纪录片视频脚本生成（视频无字幕无配音）
             generate_script_docu(params)
@@ -523,6 +671,12 @@ def render_script_buttons(tr, params):
             video_theme = st.session_state.get('video_theme')
             temperature = st.session_state.get('temperature')
             generate_script_short_sunmmary(params, subtitle_path, video_theme, temperature)
+        elif script_path == "movie_commentary":
+            # 执行电影原片解说画面匹配
+            match_movie_scenes(params)
+        elif script_path == "movie_montage":
+            # 执行电影混剪
+            build_movie_montage(params)
         else:
             load_script(tr, script_path)
 
@@ -540,6 +694,13 @@ def render_script_buttons(tr, params):
 
 def load_script(tr, script_path):
     """加载脚本文件"""
+    if not script_path or script_path in {"file_selection", "upload_script", "auto", "short", "summary", "movie_commentary", "movie_montage"}:
+        st.warning(tr("Please Select Script File"))
+        return
+    if not os.path.isfile(script_path):
+        st.error(f"{tr('Failed to load script')}: {script_path}")
+        return
+
     try:
         with open(script_path, 'r', encoding='utf-8') as f:
             script = f.read()

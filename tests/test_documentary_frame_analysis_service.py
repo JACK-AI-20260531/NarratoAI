@@ -162,6 +162,34 @@ class DocumentaryFrameAnalysisServiceTests(unittest.TestCase):
         self.assertEqual("人物从房间走到街道", batch.overall_activity_summary)
         self.assertEqual("", batch.fallback_summary)
 
+    def test_build_batch_picture_filters_garbled_model_output(self):
+        service = DocumentaryFrameAnalysisService()
+        batch = service._parse_batch_response(
+            batch_index=1,
+            raw_response='''
+{
+  "frame_observations": [
+    {"observation": "帕克在夜晚给小狗安顿，随后转至白天抱着小狗。"},
+    {"observation": "帕克在屋内陪小狗玩耍，画面温馨。"}
+  ],
+  "overall_activity_summary": "帕克在夜晚给小狗安顿完不关灯离去转至白天抱着 Amsterdam Reportingrobot Toys揭开 resetConflict rootReducer HttpHeaders Jwt_zero findViewById UITableView Drawable +#+#+#+#+#+ Manifestsocketopt JAXBElement func代码混乱片段"
+}
+''',
+            frame_paths=[
+                "/tmp/keyframe_000000_000000000.jpg",
+                "/tmp/keyframe_000075_000003000.jpg",
+            ],
+            time_range="00:00:00,000-00:00:06,000",
+        )
+
+        picture = service._build_batch_picture(batch)
+
+        self.assertIn("帕克", picture)
+        self.assertIn("小狗", picture)
+        self.assertNotIn("rootReducer", picture)
+        self.assertNotIn("findViewById", picture)
+        self.assertLessEqual(len(picture), 224)
+
     def test_parse_batch_preserves_frames_when_summary_is_missing(self):
         service = DocumentaryFrameAnalysisService()
         raw_response = """

@@ -86,6 +86,13 @@
     "Hide Log": "Hide Log",
     "Upload Local Files": "Upload Local Files",
     "File Uploaded Successfully": "File Uploaded Successfully",
-    "Frame Interval (seconds)": "Frame Interval (seconds) (More keyframes consume more tokens)"
+    "Frame Interval (seconds)": "Frame Interval (seconds) (More keyframes consume more tokens)",
+    "Video Type": "Video Type",
+    "Select/Upload Script": "Select/Upload Script",
+    "Short Generate": "Short Generate",
+    "Short Drama Summary": "Short Drama Summary",
+    "Movie Commentary": "Movie Commentary",
+    "Match Movie Scenes": "Match Movie Scenes",
+    "Batch Size": "Batch Size"
   }
 }

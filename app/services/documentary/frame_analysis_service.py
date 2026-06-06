@@ -557,18 +557,18 @@ JSON 必须包含以下键：
         return clips
 
     def _build_batch_picture(self, batch: FrameBatchResult) -> str:
-        summary = (batch.overall_activity_summary or "").strip()
+        summary = self.sanitize_visual_description(batch.overall_activity_summary)
         if summary:
             return summary
 
-        fallback = (batch.fallback_summary or "").strip()
+        fallback = self.sanitize_visual_description(batch.fallback_summary)
         if fallback:
             return fallback
 
         observation_lines = []
         for frame in batch.frame_observations:
             timestamp = str(frame.get("timestamp", "") or "").strip()
-            observation = str(frame.get("observation", "") or "").strip()
+            observation = self.sanitize_visual_description(str(frame.get("observation", "") or ""))
             if timestamp and observation:
                 observation_lines.append(f"{timestamp}: {observation}")
             elif observation:
@@ -576,10 +576,52 @@ JSON 必须包含以下键：
         if observation_lines:
             return " ".join(observation_lines)
 
-        raw_response = (batch.raw_response or "").strip()
+        raw_response = self.sanitize_visual_description(batch.raw_response)
         if raw_response:
             return raw_response[:200]
-        return "该批次分析失败，未返回可用描述。"
+        return "该批次分析失败，未返回可用画面描述。"
+
+    @classmethod
+    def sanitize_visual_description(cls, text: str, *, max_length: int = 220) -> str:
+        """清洗视觉模型输出，过滤乱码、代码 token 和异常长文本。"""
+        cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+        if not cleaned:
+            return ""
+
+        cleaned = re.sub(r"```.*?```", " ", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"https?://\S+", " ", cleaned)
+        cleaned = re.sub(r"[A-Za-z_][A-Za-z0-9_]*\s*[({:=<>]", " ", cleaned)
+        cleaned = re.sub(r"[{}\[\]<>#@$%^*_+=|\\/]{2,}", " ", cleaned)
+        cleaned = re.sub(r"[\u200b-\u200f\ufeff]", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.;:，。；：、")
+
+        if not cls._is_visual_description_readable(cleaned):
+            sentences = re.split(r"(?<=[。！？!?])|[\n\r]+", cleaned)
+            readable_sentences = [sentence.strip() for sentence in sentences if cls._is_visual_description_readable(sentence)]
+            cleaned = " ".join(readable_sentences).strip()
+
+        if not cleaned or not cls._is_visual_description_readable(cleaned):
+            return ""
+
+        if len(cleaned) > max_length:
+            cleaned = cleaned[:max_length].rstrip(" ,.;:，。；：、") + "..."
+        return cleaned
+
+    @staticmethod
+    def _is_visual_description_readable(text: str) -> bool:
+        if not text:
+            return False
+        chinese_count = len(re.findall(r"[\u4e00-\u9fff]", text))
+        ascii_word_count = len(re.findall(r"[A-Za-z]{3,}", text))
+        symbol_count = len(re.findall(r"[^\w\s\u4e00-\u9fff，。！？、；：,.!?-]", text))
+        total = max(1, len(text))
+        if chinese_count < 6:
+            return False
+        if symbol_count / total > 0.12:
+            return False
+        if ascii_word_count > max(8, chinese_count // 2):
+            return False
+        return True
 
     def _time_range_sort_key(self, time_range: str) -> tuple[int, str]:
         start = (time_range or "").split("-", 1)[0].strip()
