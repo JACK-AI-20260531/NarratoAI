@@ -959,7 +959,7 @@ def render_doubaotts_settings(tr):
 def render_voice_preview_new(tr, selected_engine):
     """渲染新的语音试听功能"""
     if st.button("🎵 试听语音合成", use_container_width=True):
-        play_content = "感谢关注 NarratoAI，有任何问题或建议，可以关注微信公众号，求助或讨论"
+        play_content = "感谢关注 JackAI，有任何问题或建议，可以关注微信公众号，求助或讨论"
 
         # 根据选择的引擎获取对应的语音配置
         voice_name = ""
@@ -1111,7 +1111,7 @@ def render_voice_parameters(tr, voice_name):
 def render_voice_preview(tr, voice_name):
     """渲染语音试听功能"""
     if st.button(tr("Play Voice")):
-        play_content = "感谢关注 NarratoAI，有任何问题或建议，可以关注微信公众号，求助或讨论"
+        play_content = "感谢关注 JackAI，有任何问题或建议，可以关注微信公众号，求助或讨论"
         if not play_content:
             play_content = st.session_state.get('video_script', '')
         if not play_content:

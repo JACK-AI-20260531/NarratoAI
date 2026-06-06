@@ -14,14 +14,14 @@ from app.models.schema import VideoClipParams, VideoAspect
 
 # 初始化配置 - 必须是第一个 Streamlit 命令
 st.set_page_config(
-    page_title="NarratoAI",
+    page_title="JackAI",
     page_icon="📽️",
     layout="wide",
     initial_sidebar_state="auto",
     menu_items={
         "Report a bug": "https://github.com/linyqh/NarratoAI/issues",
-        'About': f"# Narrato:blue[AI] :sunglasses: 📽️ \n #### Version: v{config.project_version} \n "
-                 f"自动化影视解说视频详情请移步：https://github.com/linyqh/NarratoAI"
+        'About': f"# Jack:blue[AI] :sunglasses: 📽️ \n #### Version: v{config.project_version} \n "
+                 f"自动化影视解说视频工具"
     },
 )
 
@@ -257,7 +257,7 @@ def get_jianying_export_params() -> VideoClipParams:
         tts_volume=st.session_state.get('tts_volume', 1.0),
         original_volume=st.session_state.get('original_volume', 0.7),
         bgm_volume=st.session_state.get('bgm_volume', 0.3),
-        draft_name=st.session_state.get('draft_name_input', f"NarratoAI_{int(time.time())}")
+        draft_name=st.session_state.get('draft_name_input', f"JackAI_{int(time.time())}")
     )
 
 
@@ -307,7 +307,7 @@ def render_export_jianying_button():
         
         draft_name = st.text_input(
             "请输入剪映草稿名称",
-            value=f"NarratoAI_{int(time.time())}",
+            value=f"JackAI_{int(time.time())}",
             key="draft_name_input"
         )
         
@@ -401,7 +401,7 @@ def main():
     except Exception as e:
         logger.warning(f"资源初始化时出现警告: {e}")
 
-    st.title(f"Narrato:blue[AI]:sunglasses: 📽️")
+    st.title(f"Jack:blue[AI]:sunglasses: 📽️")
     st.write(tr("Get Help"))
 
     # 首先渲染不依赖PyTorch的UI部分

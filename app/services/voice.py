@@ -1153,7 +1153,7 @@ def doubaotts_tts(text: str, voice_name: str, voice_file: str, speed: float = 1.
             "cluster": cluster
         },
         "user": {
-            "uid": "NarratoAI"
+            "uid": "JackAI"
         },
         "audio": {
             "voice_type": voice_type,
