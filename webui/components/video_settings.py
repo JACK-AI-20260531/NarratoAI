@@ -14,8 +14,8 @@ def render_video_config(tr, params):
     """渲染视频配置"""
     # 视频比例
     video_aspect_ratios = [
-        (tr("Portrait"), VideoAspect.portrait.value),
         (tr("Landscape"), VideoAspect.landscape.value),
+        (tr("Portrait"), VideoAspect.portrait.value),
     ]
     selected_index = st.selectbox(
         tr("Video Ratio"),
@@ -56,7 +56,7 @@ def render_video_config(tr, params):
 def get_video_params():
     """获取视频参数"""
     return {
-        'video_aspect': st.session_state.get('video_aspect', VideoAspect.portrait.value),
+        'video_aspect': st.session_state.get('video_aspect', VideoAspect.landscape.value),
         'video_quality': st.session_state.get('video_quality', '1080p'),
         'original_volume': st.session_state.get('original_volume', AudioVolumeDefaults.ORIGINAL_VOLUME)
     }

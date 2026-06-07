@@ -128,20 +128,166 @@ def tr(key):
     return loc.get("Translation", {}).get(key, key)
 
 
+def copy_file_to_clipboard(file_path: str):
+    """把文件写入 Windows 剪贴板，支持在资源管理器中粘贴。"""
+    import ctypes
+    import os
+    from ctypes import wintypes
+
+    absolute_path = os.path.abspath(file_path)
+    encoded_path = absolute_path + "\0\0"
+    dropfiles_size = 20
+    data = encoded_path.encode("utf-16le")
+    total_size = dropfiles_size + len(data)
+
+    kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
+    shell32 = ctypes.windll.shell32
+
+    class DROPFILES(ctypes.Structure):
+        _fields_ = [
+            ("pFiles", wintypes.DWORD),
+            ("pt_x", wintypes.LONG),
+            ("pt_y", wintypes.LONG),
+            ("fNC", wintypes.BOOL),
+            ("fWide", wintypes.BOOL),
+        ]
+
+    GMEM_MOVEABLE = 0x0002
+    CF_HDROP = 15
+    DROPEFFECT_COPY = 1
+
+    kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+    kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalLock.restype = wintypes.LPVOID
+    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalUnlock.restype = wintypes.BOOL
+    kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalFree.restype = wintypes.HGLOBAL
+    user32.OpenClipboard.argtypes = [wintypes.HWND]
+    user32.OpenClipboard.restype = wintypes.BOOL
+    user32.EmptyClipboard.restype = wintypes.BOOL
+    user32.RegisterClipboardFormatW.argtypes = [wintypes.LPCWSTR]
+    user32.RegisterClipboardFormatW.restype = wintypes.UINT
+    user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+    user32.SetClipboardData.restype = wintypes.HANDLE
+    user32.CloseClipboard.restype = wintypes.BOOL
+    drop_effect_format = user32.RegisterClipboardFormatW("Preferred DropEffect")
+    shell32.DragQueryFileW.argtypes = [wintypes.HANDLE, wintypes.UINT, wintypes.LPWSTR, wintypes.UINT]
+    shell32.DragQueryFileW.restype = wintypes.UINT
+
+    handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, total_size)
+    if not handle:
+        raise OSError("GlobalAlloc failed")
+
+    effect_handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, ctypes.sizeof(wintypes.DWORD))
+    if not effect_handle:
+        kernel32.GlobalFree(handle)
+        raise OSError("GlobalAlloc drop effect failed")
+
+    clipboard_opened = False
+    try:
+        locked = kernel32.GlobalLock(handle)
+        if not locked:
+            raise OSError("GlobalLock failed")
+
+        dropfiles = DROPFILES()
+        dropfiles.pFiles = dropfiles_size
+        dropfiles.pt_x = 0
+        dropfiles.pt_y = 0
+        dropfiles.fNC = False
+        dropfiles.fWide = True
+
+        ctypes.memmove(locked, ctypes.byref(dropfiles), dropfiles_size)
+        ctypes.memmove(locked + dropfiles_size, data, len(data))
+        kernel32.GlobalUnlock(handle)
+
+        effect_locked = kernel32.GlobalLock(effect_handle)
+        if not effect_locked:
+            raise OSError("GlobalLock drop effect failed")
+        effect_value = wintypes.DWORD(DROPEFFECT_COPY)
+        ctypes.memmove(effect_locked, ctypes.byref(effect_value), ctypes.sizeof(effect_value))
+        kernel32.GlobalUnlock(effect_handle)
+
+        if not user32.OpenClipboard(None):
+            raise OSError("OpenClipboard failed")
+        clipboard_opened = True
+        if not user32.EmptyClipboard():
+            raise OSError("EmptyClipboard failed")
+        if not user32.SetClipboardData(CF_HDROP, handle):
+            raise OSError("SetClipboardData failed")
+        handle = None
+        if drop_effect_format and not user32.SetClipboardData(drop_effect_format, effect_handle):
+            raise OSError("SetClipboardData drop effect failed")
+        effect_handle = None
+    finally:
+        if clipboard_opened:
+            user32.CloseClipboard()
+        if handle:
+            kernel32.GlobalFree(handle)
+        if effect_handle:
+            kernel32.GlobalFree(effect_handle)
+
+
+def render_copy_video_button(source_video: str):
+    """渲染复制视频按钮，点击时只刷新按钮区域。"""
+    import os
+
+    if st.button("复制视频", use_container_width=True, key="copy_generated_video"):
+        if not os.path.exists(source_video):
+            st.error(f"视频文件不存在: {source_video}")
+            return
+
+        try:
+            copy_file_to_clipboard(source_video)
+            st.success("视频文件已复制到剪贴板，可粘贴到任意文件夹")
+        except Exception as e:
+            logger.error(f"复制视频到剪贴板失败: {e}")
+            st.error(f"复制失败: {e}")
+
+
+if hasattr(st, "fragment"):
+    render_copy_video_button = st.fragment(render_copy_video_button)
+
+
 def render_generate_button():
     """渲染生成按钮和处理逻辑"""
-    if st.button(tr("Generate Video"), use_container_width=True, type="primary"):
-        from app.services import task as tm
-        from app.services import state as sm
-        from app.models import const
-        import threading
-        import time
-        import uuid
+    from app.services import task as tm
+    from app.services import state as sm
+    from app.models import const
+    import threading
+    import uuid
 
+    task_id = st.session_state.get('generate_video_task_id', '')
+    task = sm.state.get_task(task_id) if task_id else None
+    is_running = bool(task and task.get("state") == const.TASK_STATE_PROCESSING)
+
+    if task:
+        progress = int(task.get("progress", 0) or 0)
+        state = task.get("state")
+        st.progress(progress / 100)
+
+        if state == const.TASK_STATE_PROCESSING:
+            st.info(f"Processing... {progress}%")
+        elif state == const.TASK_STATE_COMPLETE:
+            st.success(tr("视频生成完成"))
+            video_files = task.get("videos", [])
+            try:
+                if video_files:
+                    player_cols = st.columns(len(video_files) * 2 + 1)
+                    for i, url in enumerate(video_files):
+                        player_cols[i * 2 + 1].video(url)
+
+                    render_copy_video_button(video_files[0])
+            except Exception as e:
+                logger.error(f"播放视频失败: {e}")
+        elif state == const.TASK_STATE_FAILED:
+            st.error(f"任务失败: {task.get('message', 'Unknown error')}")
+
+    if st.button(tr("Generate Video"), use_container_width=True, type="primary", disabled=is_running):
         config.save_config()
 
-        # 移除task_id检查 - 现在使用统一裁剪策略，不再需要预裁剪
-        # 直接检查必要的文件是否存在
         if not st.session_state.get('video_clip_json_path'):
             st.error(tr("脚本文件不能为空"))
             return
@@ -149,77 +295,39 @@ def render_generate_button():
             st.error(tr("视频文件不能为空"))
             return
 
-        # 获取所有参数
         script_params = script_settings.get_script_params()
         video_params = video_settings.get_video_params()
         audio_params = audio_settings.get_audio_params()
         subtitle_params = subtitle_settings.get_subtitle_params()
 
-        # 合并所有参数
         all_params = {
             **script_params,
             **video_params,
             **audio_params,
             **subtitle_params
         }
-
-        # 创建参数对象
         params = VideoClipParams(**all_params)
-
-        # 生成一个新的task_id用于本次处理
-        task_id = str(uuid.uuid4())
-
-        # 创建进度条
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        new_task_id = str(uuid.uuid4())
+        st.session_state['generate_video_task_id'] = new_task_id
+        sm.state.update_task(new_task_id, state=const.TASK_STATE_PROCESSING, progress=0)
 
         def run_task():
             try:
                 tm.start_subclip_unified(
-                    task_id=task_id,
+                    task_id=new_task_id,
                     params=params
                 )
             except Exception as e:
                 logger.error(f"任务执行失败: {e}")
-                sm.state.update_task(task_id, state=const.TASK_STATE_FAILED, message=str(e))
+                sm.state.update_task(new_task_id, state=const.TASK_STATE_FAILED, message=str(e))
 
-        # 在新线程中启动任务
-        thread = threading.Thread(target=run_task)
+        thread = threading.Thread(target=run_task, daemon=True)
         thread.start()
+        st.rerun()
 
-        # 轮询任务状态
-        while True:
-            task = sm.state.get_task(task_id)
-            if task:
-                progress = task.get("progress", 0)
-                state = task.get("state")
-                
-                # 更新进度条
-                progress_bar.progress(progress / 100)
-                status_text.text(f"Processing... {progress}%")
-
-                if state == const.TASK_STATE_COMPLETE:
-                    status_text.text(tr("视频生成完成"))
-                    progress_bar.progress(1.0)
-                    
-                    # 显示结果
-                    video_files = task.get("videos", [])
-                    try:
-                        if video_files:
-                            player_cols = st.columns(len(video_files) * 2 + 1)
-                            for i, url in enumerate(video_files):
-                                player_cols[i * 2 + 1].video(url)
-                    except Exception as e:
-                        logger.error(f"播放视频失败: {e}")
-                    
-                    st.success(tr("视频生成完成"))
-                    break
-                
-                elif state == const.TASK_STATE_FAILED:
-                    st.error(f"任务失败: {task.get('message', 'Unknown error')}")
-                    break
-            
-            time.sleep(0.5)
+    if is_running:
+        time.sleep(1)
+        st.rerun()
 
 
 def get_voice_name_for_tts_engine(tts_engine: str) -> str:
@@ -266,6 +374,8 @@ def render_export_jianying_button():
     import os
     import time
     import uuid
+    from app.services import state as sm
+    from app.models import const
     from loguru import logger
     
     # 初始化session state
@@ -275,31 +385,35 @@ def render_export_jianying_button():
         st.session_state['jianying_export_result'] = None
     if 'jianying_export_error' not in st.session_state:
         st.session_state['jianying_export_error'] = None
-    
-    if st.button("📤 导出到剪映草稿", use_container_width=True, type="secondary"):
-        config.save_config()
-        
-        if not st.session_state.get('video_clip_json_path'):
-            st.error("脚本文件不能为空")
-            return
-        if not st.session_state.get('video_origin_path'):
-            st.error("视频文件不能为空")
-            return
-        
-        jianying_draft_path = config.ui.get("jianying_draft_path", "")
-        if not jianying_draft_path:
-            st.error("请在基础设置中配置剪映草稿地址")
-            return
-        
-        if not os.path.exists(jianying_draft_path):
-            st.error(f"剪映草稿文件夹不存在: {jianying_draft_path}")
-            return
-        
-        # 显示导出表单
-        st.session_state['show_jianying_export_form'] = True
-        st.session_state['jianying_export_result'] = None
-        st.session_state['jianying_export_error'] = None
-    
+
+    generate_task_id = st.session_state.get('generate_video_task_id', '')
+    generate_task = sm.state.get_task(generate_task_id) if generate_task_id else None
+    video_generated = bool(generate_task and generate_task.get("state") == const.TASK_STATE_COMPLETE)
+
+    st.markdown(
+        """
+        <style>
+        .st-key-jianying_export_button button[kind="primary"]:not(:disabled) {
+            background-color: #16a34a;
+            border-color: #16a34a;
+        }
+        .st-key-jianying_export_button button[kind="primary"]:hover:not(:disabled) {
+            background-color: #15803d;
+            border-color: #15803d;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.session_state.get('jianying_export_result'):
+        result = st.session_state['jianying_export_result']
+        st.success(f"✅ 成功导出到剪映草稿: {result['draft_name']}")
+        st.info(f"📁 草稿已保存到: {result['draft_path']}")
+        st.info("请直接打开本地安装的剪映软件，即可操作导入到剪映的视频。")
+    elif st.session_state.get('jianying_export_error'):
+        st.error(f"❌ 导出到剪映草稿失败: {st.session_state['jianying_export_error']}")
+
     # 显示导出表单
     if st.session_state['show_jianying_export_form']:
         st.markdown("---")
@@ -310,8 +424,14 @@ def render_export_jianying_button():
             value=f"JackAI_{int(time.time())}",
             key="draft_name_input"
         )
+
+        confirm_col, cancel_col = st.columns(2)
+        with confirm_col:
+            confirm_export = st.button("确认导出", key="confirm_export", use_container_width=True)
+        with cancel_col:
+            cancel_export = st.button("取消", key="cancel_export", use_container_width=True)
         
-        if st.button("确认导出", key="confirm_export"):
+        if confirm_export:
             if not draft_name:
                 st.error("请输入草稿名称")
                 return
@@ -343,22 +463,47 @@ def render_export_jianying_button():
                     st.session_state['jianying_export_result'] = result
                     st.session_state['jianying_export_error'] = None
                     st.session_state['show_jianying_export_form'] = False
-                    
-                    st.success(f"✅ 成功导出到剪映草稿: {result['draft_name']}")
-                    st.info(f"📁 草稿已保存到: {result['draft_path']}")
+                    st.rerun()
                 except Exception as e:
                     logger.error(f"导出到剪映草稿失败: {e}")
                     import traceback
                     logger.error(f"错误详情: {traceback.format_exc()}")
                     st.session_state['jianying_export_error'] = str(e)
                     st.session_state['jianying_export_result'] = None
-                    st.error(f"❌ 导出到剪映草稿失败: {e}")
+                    st.session_state['show_jianying_export_form'] = False
+                    st.rerun()
         
-        if st.button("取消", key="cancel_export"):
+        if cancel_export:
             st.session_state['show_jianying_export_form'] = False
             st.session_state['jianying_export_result'] = None
             st.session_state['jianying_export_error'] = None
             st.rerun()
+    
+    show_export_button = not st.session_state['show_jianying_export_form'] and not st.session_state.get('jianying_export_result')
+    if show_export_button and st.button("📤 导出到剪映草稿", key="jianying_export_button", use_container_width=True, type="primary", disabled=not video_generated):
+        config.save_config()
+        
+        if not st.session_state.get('video_clip_json_path'):
+            st.error("脚本文件不能为空")
+            return
+        if not st.session_state.get('video_origin_path'):
+            st.error("视频文件不能为空")
+            return
+        
+        jianying_draft_path = config.ui.get("jianying_draft_path", "")
+        if not jianying_draft_path:
+            st.error("请在基础设置中配置剪映草稿地址")
+            return
+        
+        if not os.path.exists(jianying_draft_path):
+            st.error(f"剪映草稿文件夹不存在: {jianying_draft_path}")
+            return
+        
+        # 显示导出表单
+        st.session_state['show_jianying_export_form'] = True
+        st.session_state['jianying_export_result'] = None
+        st.session_state['jianying_export_error'] = None
+        st.rerun()
 
 
 

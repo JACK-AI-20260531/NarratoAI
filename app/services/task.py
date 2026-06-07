@@ -190,7 +190,7 @@ def start_subclip(task_id: str, params: VideoClipParams, subclip_path_videos: di
     merger_video.combine_clip_videos(
         output_video_path=combined_video_path,
         video_paths=video_clips,
-        video_ost_list=video_ost,
+        video_ost_list=[0] * len(video_clips),
         video_aspect=params.video_aspect,
         threads=params.n_threads
     )
@@ -230,8 +230,8 @@ def start_subclip(task_id: str, params: VideoClipParams, subclip_path_videos: di
     options = {
         'voice_volume': final_tts_volume,  # 配音音量（优化后）
         'bgm_volume': final_bgm_volume,  # 背景音乐音量（优化后）
-        'original_audio_volume': final_original_volume,  # 视频原声音量（优化后）
-        'keep_original_audio': True,  # 是否保留原声
+        'original_audio_volume': 0.0,  # 最终合成时先移除原合成视频原声
+        'keep_original_audio': False,  # 只合并生成后的音频，避免原生音频残留
         'subtitle_enabled': params.subtitle_enabled,  # 是否启用字幕 - 修复字幕开关bug
         'subtitle_font': params.font_name,  # 这里使用相对字体路径，会自动在 font_dir() 目录下查找
         'subtitle_font_size': params.font_size,
@@ -406,7 +406,7 @@ def start_subclip_unified(task_id: str, params: VideoClipParams):
     merger_video.combine_clip_videos(
         output_video_path=combined_video_path,
         video_paths=video_clips,
-        video_ost_list=video_ost,
+        video_ost_list=[0] * len(video_clips),
         video_aspect=params.video_aspect,
         threads=params.n_threads
     )
@@ -444,8 +444,8 @@ def start_subclip_unified(task_id: str, params: VideoClipParams):
     options = {
         'voice_volume': final_tts_volume,
         'bgm_volume': final_bgm_volume,
-        'original_audio_volume': final_original_volume,
-        'keep_original_audio': True,
+        'original_audio_volume': 0.0,
+        'keep_original_audio': False,
         'subtitle_enabled': params.subtitle_enabled,
         'subtitle_font': params.font_name,
         'subtitle_font_size': params.font_size,

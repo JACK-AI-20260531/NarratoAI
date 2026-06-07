@@ -1,6 +1,7 @@
 import os
 import glob
 import json
+import re
 import time
 import traceback
 import streamlit as st
@@ -153,19 +154,9 @@ def render_script_file(tr, params):
         ]
 
         # 获取已有脚本文件
-        suffix = "*.json"
         script_dir = utils.script_dir()
-        files = glob.glob(os.path.join(script_dir, suffix))
-        file_list = []
+        file_list = _get_saved_script_files()
 
-        for file in files:
-            file_list.append({
-                "name": os.path.basename(file),
-                "file": file,
-                "ctime": os.path.getctime(file)
-            })
-
-        file_list.sort(key=lambda x: x["ctime"], reverse=True)
         for file in file_list:
             display_name = file['file'].replace(config.root_dir, "")
             script_list.append((display_name, file['file']))
@@ -314,10 +305,78 @@ def render_short_generate_options(tr):
     )
     st.session_state['custom_clips'] = custom_clips
 
+
+def _get_saved_script_files():
+    script_dir = utils.script_dir()
+    files = glob.glob(os.path.join(script_dir, "*.json"))
+    file_list = []
+    for file in files:
+        file_list.append({
+            "name": os.path.basename(file),
+            "file": file,
+            "ctime": os.path.getctime(file)
+        })
+    file_list.sort(key=lambda x: x["ctime"], reverse=True)
+    return file_list
+
+
+def _safe_filename_part(value: str, default: str = "script") -> str:
+    name = os.path.splitext(os.path.basename(value or ""))[0].strip()
+    name = re.sub(r'[\\/:*?"<>|\s]+', "_", name).strip("._")
+    return name or default
+
+
+def _build_script_save_path():
+    script_dir = utils.script_dir()
+    timestamp = time.strftime("%Y-%m%d-%H%M%S")
+    movie_name = _safe_filename_part(st.session_state.get('video_origin_path', ''), "script")
+    save_path = os.path.join(script_dir, f"{movie_name}_{timestamp}.json")
+    suffix = 1
+    while os.path.exists(save_path):
+        save_path = os.path.join(script_dir, f"{movie_name}_{timestamp}_{suffix:02d}.json")
+        suffix += 1
+    return save_path
+
+
+def _load_saved_video_script(script_path: str):
+    with open(script_path, 'r', encoding='utf-8') as f:
+        script = utils.clean_model_output(f.read())
+    data = json.loads(script)
+    st.session_state['video_clip_json'] = data
+    st.session_state['video_clip_json_path'] = script_path
+    return data
+
+
+def _render_movie_commentary_script_picker():
+    file_list = _get_saved_script_files()
+    script_options = [("不选择历史脚本", "")]
+    for file in file_list:
+        display_name = file['file'].replace(config.root_dir, "")
+        script_options.append((display_name, file['file']))
+
+    selected_index = st.selectbox(
+        "选择已生成的脚本文件",
+        index=0,
+        options=range(len(script_options)),
+        format_func=lambda x: script_options[x][0],
+        key="movie_commentary_saved_script_selection",
+    )
+    selected_path = script_options[selected_index][1]
+    if selected_path and st.button("加载已生成脚本", key="movie_commentary_load_saved_script", use_container_width=True):
+        try:
+            _load_saved_video_script(selected_path)
+            st.success("脚本加载成功")
+            st.rerun()
+        except Exception as e:
+            logger.error(f"加载电影原片解说历史脚本失败\n{traceback.format_exc()}")
+            st.error(f"脚本加载失败: {str(e)}")
+
+
 def render_movie_commentary_options(tr, key_prefix="movie_commentary"):
     """电影原片解说模式：根据解说脚本匹配原片画面。"""
     st.markdown("**电影原片解说**")
     render_movie_scene_match_status()
+    _render_movie_commentary_script_picker()
 
     commentary_script = st.text_area(
         "电影原片解说脚本",
@@ -760,9 +819,7 @@ def save_script_with_validation(tr, video_clip_json_details):
 
     # 第二步：保存脚本
     with st.spinner(tr("Save Script")):
-        script_dir = utils.script_dir()
-        timestamp = time.strftime("%Y-%m%d-%H%M%S")
-        save_path = os.path.join(script_dir, f"{timestamp}.json")
+        save_path = _build_script_save_path()
 
         try:
             data = json.loads(video_clip_json_details)

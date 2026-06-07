@@ -121,6 +121,7 @@ def get_safe_encoder_config(hwaccel_type: Optional[str] = None) -> Dict[str, str
     elif hwaccel_type == "qsv":
         # Intel QSV编码器
         config["video_codec"] = "h264_qsv"
+        config["pixel_format"] = "nv12"
         config["preset"] = "medium"
         config["quality_param"] = "global_quality"
         config["quality_value"] = "23"
@@ -167,9 +168,9 @@ def build_ffmpeg_command(
     """
     cmd = ["ffmpeg", "-y"]
     
-    # 关键修正：对于视频裁剪，不使用CUDA硬件解码，只使用NVENC编码器
+    # 关键修正：对于视频裁剪，不使用硬件解码，只使用硬件编码器
     # 这样能避免滤镜链格式转换错误，同时保持编码性能优势
-    if encoder_config["video_codec"] == "h264_nvenc":
+    if encoder_config["video_codec"] in ["h264_nvenc", "h264_qsv"]:
         # 不添加硬件解码参数，让FFmpeg自动处理
         # 这避免了 "Impossible to convert between the formats" 错误
         pass
@@ -263,6 +264,7 @@ def execute_ffmpeg_with_fallback(
         
         if is_windows:
             process_kwargs["encoding"] = 'utf-8'
+            process_kwargs["errors"] = 'replace'
         
         result = subprocess.run(cmd, **process_kwargs)
         
@@ -313,19 +315,19 @@ def analyze_ffmpeg_error(error_msg: str) -> str:
     """
     error_msg_lower = error_msg.lower()
     
+    # 硬件链路错误优先处理，避免QSV/NVENC滤镜格式错误落到普通兼容模式
+    if any(keyword in error_msg_lower for keyword in [
+        "qsv", "d3d11va", "dxva2", "cuda", "nvenc", "amf", "videotoolbox",
+        "hardware", "hwaccel", "gpu", "device"
+    ]):
+        return "hardware_error"
+
     # 滤镜链错误
     if any(keyword in error_msg_lower for keyword in [
         "impossible to convert", "filter", "format", "scale", "auto_scale",
         "null", "parsed_null", "reinitializing filters"
     ]):
         return "filter_chain_error"
-    
-    # 硬件加速错误
-    if any(keyword in error_msg_lower for keyword in [
-        "cuda", "nvenc", "amf", "qsv", "d3d11va", "dxva2", "videotoolbox",
-        "hardware", "hwaccel", "gpu", "device"
-    ]):
-        return "hardware_error"
     
     # 编码器错误
     if any(keyword in error_msg_lower for keyword in [
@@ -486,6 +488,7 @@ def execute_simple_command(cmd: List[str], timestamp: str, method_name: str) -> 
         
         if is_windows:
             process_kwargs["encoding"] = 'utf-8'
+            process_kwargs["errors"] = 'replace'
         
         subprocess.run(cmd, **process_kwargs)
         

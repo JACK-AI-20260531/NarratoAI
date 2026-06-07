@@ -155,6 +155,7 @@ def _start_background_task(
     )
     thread.start()
     st.success(success_message)
+    st.rerun()
 
 
 def _render_task_status(*, task_key: str, running_label: str, done_label: str, failed_label: str, refresh_key: str):
