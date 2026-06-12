@@ -14,6 +14,10 @@ from app.utils import utils, check_script
 from webui.tools.generate_script_docu import generate_script_docu
 from webui.tools.generate_script_short import generate_script_short
 from webui.tools.generate_short_summary import generate_script_short_sunmmary
+from webui.tools.generate_bilibili_rewrite import (
+    extract_bilibili_transcript,
+    rewrite_bilibili_transcript_script,
+)
 from webui.tools.movie_commentary import (
     build_movie_montage,
     is_movie_montage_running,
@@ -55,6 +59,9 @@ def render_script_panel(tr):
         elif script_path == "movie_montage":
             # 电影混剪
             render_movie_montage_options(tr)
+        elif script_path == "bilibili_rewrite":
+            # B站文案改写
+            render_bilibili_rewrite_options(tr)
         else:
             # 默认为空
             pass
@@ -72,10 +79,12 @@ def render_script_file(tr, params):
     MODE_SUMMARY = "summary"
     MODE_MOVIE_COMMENTARY = "movie_commentary"
     MODE_MOVIE_MONTAGE = "movie_montage"
+    MODE_BILIBILI_REWRITE = "bilibili_rewrite"
 
     # 处理保存脚本后的模式切换（必须在 widget 实例化之前）
     if st.session_state.get('_switch_to_file_mode'):
         st.session_state['script_mode_selection'] = tr("Select/Upload Script")
+        st.session_state.pop('script_file_selection', None)
         del st.session_state['_switch_to_file_mode']
 
     # 模式选项映射
@@ -86,6 +95,7 @@ def render_script_file(tr, params):
         tr("Short Drama Summary"): MODE_SUMMARY,
         "电影原片解说": MODE_MOVIE_COMMENTARY,
         "电影混剪": MODE_MOVIE_MONTAGE,
+        "B站文案改写": MODE_BILIBILI_REWRITE,
     }
     
     # 获取当前状态
@@ -105,6 +115,8 @@ def render_script_file(tr, params):
         default_index = mode_keys.index("电影原片解说")
     elif current_path == "movie_montage":
         default_index = mode_keys.index("电影混剪")
+    elif current_path == "bilibili_rewrite":
+        default_index = mode_keys.index("B站文案改写")
     else:
         default_index = mode_keys.index(tr("Select/Upload Script"))
 
@@ -121,6 +133,7 @@ def render_script_file(tr, params):
             new_mode = mode_options[selected_label]
             if new_mode == MODE_FILE:
                 st.session_state.video_clip_json_path = ""
+                st.session_state.pop('script_file_selection', None)
                 params.video_clip_json_path = ""
             else:
                 st.session_state.video_clip_json_path = new_mode
@@ -163,7 +176,7 @@ def render_script_file(tr, params):
 
         # 找到保存的脚本文件在列表中的索引
         # 如果当前 path 是功能模式或占位值，则重置为空
-        mode_values = {MODE_FILE, MODE_AUTO, MODE_SHORT, MODE_SUMMARY, MODE_MOVIE_COMMENTARY, MODE_MOVIE_MONTAGE, "upload_script"}
+        mode_values = {MODE_FILE, MODE_AUTO, MODE_SHORT, MODE_SUMMARY, MODE_MOVIE_COMMENTARY, MODE_MOVIE_MONTAGE, MODE_BILIBILI_REWRITE, "upload_script"}
         saved_script_path = current_path if current_path not in mode_values else ""
         
         selected_index = 0
@@ -171,10 +184,6 @@ def render_script_file(tr, params):
             if path == saved_script_path:
                 selected_index = i
                 break
-
-        # 如果找到了保存的脚本，同步更新 selectbox 的 key 状态
-        if saved_script_path and selected_index > 0:
-            st.session_state['script_file_selection'] = selected_index
 
         selected_script_index = st.selectbox(
             tr("Script Files"),
@@ -185,14 +194,8 @@ def render_script_file(tr, params):
         )
 
         script_path = script_list[selected_script_index][1]
-        # 只有当用户实际选择了脚本时才更新路径，避免覆盖已保存的路径
-        if script_path:
-            st.session_state['video_clip_json_path'] = script_path
-            params.video_clip_json_path = script_path
-        elif saved_script_path:
-            # 如果用户选择了 "None" 但之前有保存的脚本，保持原有路径
-            st.session_state['video_clip_json_path'] = saved_script_path
-            params.video_clip_json_path = saved_script_path
+        st.session_state['video_clip_json_path'] = script_path
+        params.video_clip_json_path = script_path
 
         # 处理脚本上传
         if script_path == "upload_script":
@@ -238,6 +241,110 @@ def render_script_file(tr, params):
         # --- 功能生成模式 ---
         st.session_state['video_clip_json_path'] = selected_mode
         params.video_clip_json_path = selected_mode
+
+
+def render_bilibili_rewrite_options(tr):
+    """渲染 B站文案改写模式下的链接输入面板。"""
+    st.markdown("**B站文案改写**")
+    st.caption("先提取并保存 B站字幕文案，再用你的提示词改写成 NarratoAI 脚本；没有公开字幕时会下载音频并使用默认 ASR 转写。")
+    st.text_input(
+        "B站视频链接",
+        value=st.session_state.get('bilibili_video_url', ''),
+        placeholder="请输入 B站视频链接，例如：https://www.bilibili.com/video/BV...",
+        help="目前依赖 B站公开视频字幕；没有公开字幕的视频无法直接提取文案。",
+        key="bilibili_video_url_input",
+    )
+    st.session_state['bilibili_video_url'] = st.session_state.get('bilibili_video_url_input', '')
+
+    browser_options = {
+        "不读取浏览器登录态": "",
+        "Microsoft Edge": "edge",
+        "Google Chrome": "chrome",
+        "Firefox": "firefox",
+    }
+    selected_browser = st.selectbox(
+        "B站登录态来源",
+        options=list(browser_options.keys()),
+        index=0,
+        help="无公开字幕且下载音频被 412 拦截时，可选择你已登录 B站的浏览器，让 yt-dlp 自动读取登录态。",
+        key="bilibili_cookies_browser_label",
+    )
+    st.session_state['bilibili_cookies_from_browser'] = browser_options[selected_browser]
+
+    st.text_area(
+        "B站 Cookie（可选）",
+        value=st.session_state.get('bilibili_cookie', ''),
+        height=90,
+        placeholder="普通公开视频通常不用填；如果下载音频出现 412/需要登录，可粘贴浏览器里的 Cookie。",
+        help="仅用于 yt-dlp 下载无公开字幕视频的音频，不会用于公开字幕接口。",
+        key="bilibili_cookie_input",
+    )
+    st.session_state['bilibili_cookie'] = st.session_state.get('bilibili_cookie_input', '')
+
+    st.text_area(
+        "改写提示词",
+        value=st.session_state.get('bilibili_rewrite_prompt', ''),
+        height=180,
+        placeholder="例如：保留原剧情节奏，改写成更适合口播的悬念型解说；分成 8 段，开头先抛冲突。",
+        help="这里写你希望模型如何重写已提取的 B站文案。",
+        key="bilibili_rewrite_prompt_input",
+    )
+    st.session_state['bilibili_rewrite_prompt'] = st.session_state.get('bilibili_rewrite_prompt_input', '')
+
+    option_cols = st.columns(2)
+    with option_cols[0]:
+        st.number_input(
+            "改写片段数",
+            min_value=1,
+            max_value=50,
+            value=st.session_state.get('bilibili_rewrite_clip_count', 8),
+            help="希望生成的视频脚本片段数量。",
+            key="bilibili_rewrite_clip_count_input",
+        )
+        st.session_state['bilibili_rewrite_clip_count'] = st.session_state.get('bilibili_rewrite_clip_count_input', 8)
+    with option_cols[1]:
+        st.slider(
+            "改写温度",
+            min_value=0.0,
+            max_value=2.0,
+            value=st.session_state.get('bilibili_rewrite_temperature', 0.7),
+            step=0.1,
+            help="数值越高，改写越发散。",
+            key="bilibili_rewrite_temperature_input",
+        )
+        st.session_state['bilibili_rewrite_temperature'] = st.session_state.get('bilibili_rewrite_temperature_input', 0.7)
+
+    if st.session_state.get('bilibili_transcript_path'):
+        source = st.session_state.get('bilibili_transcript_source', '未知来源')
+        st.info(f"已保存提取文案（{source}）: {os.path.basename(st.session_state.get('bilibili_transcript_path'))}")
+
+    if st.session_state.get('bilibili_transcript'):
+        st.text_area(
+            "提取到的 B站字幕文案",
+            value=st.session_state.get('bilibili_transcript', ''),
+            height=240,
+            disabled=False,
+            key="bilibili_transcript_preview",
+        )
+        st.session_state['bilibili_transcript'] = st.session_state.get('bilibili_transcript_preview', '')
+
+    action_cols = st.columns(2)
+    with action_cols[0]:
+        if st.button("提取并保存文案", key="bilibili_extract_transcript", use_container_width=True):
+            extract_bilibili_transcript(
+                st.session_state.get('bilibili_video_url', ''),
+                cookie=st.session_state.get('bilibili_cookie', ''),
+                cookies_from_browser=st.session_state.get('bilibili_cookies_from_browser', ''),
+            )
+    with action_cols[1]:
+        if st.button("使用提示词改写脚本", key="bilibili_rewrite_script", use_container_width=True):
+            rewrite_bilibili_transcript_script(
+                transcript=st.session_state.get('bilibili_transcript_preview') or st.session_state.get('bilibili_transcript', ''),
+                user_prompt=st.session_state.get('bilibili_rewrite_prompt', ''),
+                clip_count=st.session_state.get('bilibili_rewrite_clip_count', 8),
+                temperature=st.session_state.get('bilibili_rewrite_temperature', 0.7),
+            )
+
 
 
 def render_video_file(tr, params):
@@ -520,13 +627,79 @@ def render_video_details(tr):
     return video_theme, custom_prompt
 
 
+def _list_subtitle_files() -> list[tuple[str, str]]:
+    """扫描本地字幕目录，返回可选的 SRT 文件列表。"""
+    subtitle_pattern = os.path.join(utils.subtitle_dir(), "*.srt")
+    subtitle_files = sorted(glob.glob(subtitle_pattern), key=os.path.getmtime, reverse=True)
+    return [(os.path.basename(path), path) for path in subtitle_files]
+
+
+def _select_subtitle_file(subtitle_path: str) -> bool:
+    """读取并选中指定字幕文件，同时同步页面状态和配置。"""
+    if not subtitle_path or not os.path.exists(subtitle_path):
+        return False
+
+    with open(subtitle_path, "rb") as f:
+        decoded = decode_subtitle_bytes(f.read())
+
+    st.session_state['subtitle_path'] = subtitle_path
+    st.session_state['subtitle_content'] = decoded.text
+    st.session_state['subtitle_file_processed'] = True
+    config.ui["subtitle_path"] = subtitle_path
+    config.save_config()
+    return True
+
+
 def short_drama_summary(tr):
     """短剧解说 渲染视频主题和提示词"""
     # 检查是否已经处理过字幕文件
     if 'subtitle_file_processed' not in st.session_state:
         st.session_state['subtitle_file_processed'] = False
 
+    saved_subtitle_path = config.ui.get("subtitle_path", "")
+    if saved_subtitle_path and not st.session_state.get('subtitle_path'):
+        try:
+            _select_subtitle_file(saved_subtitle_path)
+        except Exception as e:
+            logger.warning(f"恢复字幕缓存失败: {e}")
+
     render_fun_asr_transcription(tr)
+
+    subtitle_options = [("不选择字幕", "")] + _list_subtitle_files()
+    current_subtitle_path = st.session_state.get('subtitle_path') or ""
+    subtitle_paths = [path for _, path in subtitle_options]
+    subtitle_index = subtitle_paths.index(current_subtitle_path) if current_subtitle_path in subtitle_paths else 0
+    selected_subtitle_label = st.selectbox(
+        "选择已生成/已上传的 SRT 字幕",
+        options=[label for label, _ in subtitle_options],
+        index=subtitle_index,
+        key="subtitle_file_selection",
+        help="这里会列出 resource/srt 目录下的字幕文件，转写生成或上传后的字幕都可以在这里切换。",
+    )
+    selected_subtitle_path = subtitle_options[[label for label, _ in subtitle_options].index(selected_subtitle_label)][1]
+    if selected_subtitle_path != current_subtitle_path:
+        if selected_subtitle_path:
+            try:
+                _select_subtitle_file(selected_subtitle_path)
+                st.rerun()
+            except Exception as e:
+                st.error(f"字幕切换失败: {e}")
+        else:
+            st.session_state['subtitle_path'] = None
+            st.session_state['subtitle_content'] = None
+            st.session_state['subtitle_file_processed'] = False
+            config.ui["subtitle_path"] = ""
+            config.save_config()
+            st.rerun()
+
+    if st.session_state.get('subtitle_content'):
+        st.text_area(
+            "当前 SRT 字幕内容",
+            value=st.session_state.get('subtitle_content', ''),
+            height=260,
+            key="subtitle_content_preview",
+            disabled=True,
+        )
     
     subtitle_file = st.file_uploader(
         tr("上传字幕文件"),
@@ -542,6 +715,8 @@ def short_drama_summary(tr):
             st.session_state['subtitle_path'] = None
             st.session_state['subtitle_content'] = None
             st.session_state['subtitle_file_processed'] = False
+            config.ui["subtitle_path"] = ""
+            config.save_config()
             st.rerun()
     
     # 只有当有文件上传且尚未处理时才执行处理逻辑
@@ -584,10 +759,10 @@ def short_drama_summary(tr):
             )
             st.session_state['subtitle_path'] = script_file_path
             st.session_state['subtitle_content'] = script_content
-            st.session_state['subtitle_file_processed'] = True  # 标记已处理
-
-            # 避免使用rerun，使用更新状态的方式
-            # st.rerun()
+            st.session_state['subtitle_file_processed'] = True
+            config.ui["subtitle_path"] = script_file_path
+            config.save_config()
+            st.rerun()
 
         except Exception as e:
             st.error(f"{tr('Upload failed')}: {str(e)}")
@@ -602,56 +777,171 @@ def short_drama_summary(tr):
 
 
 def render_fun_asr_transcription(tr):
-    """使用阿里百炼 Fun-ASR 从本地音视频转写生成字幕。"""
-    def clear_fun_asr_subtitle_state():
+    """渲染字幕转录面板，支持阿里百炼 Fun-ASR 和第三方 ASR。"""
+    def clear_asr_subtitle_state():
         st.session_state['subtitle_path'] = None
         st.session_state['subtitle_content'] = None
         st.session_state['subtitle_file_processed'] = False
+        config.ui["subtitle_path"] = ""
+        config.save_config()
 
-    with st.expander("阿里百炼 Fun-ASR 字幕转录", expanded=False):
-        st.caption("上传本地音频/视频后，将自动上传到阿里百炼临时存储并通过 fun-asr 生成 SRT 字幕。")
-        st.markdown(
-            "API Key 获取地址："
-            "[https://bailian.console.aliyun.com/?tab=model#/api-key]"
-            "(https://bailian.console.aliyun.com/?tab=model#/api-key)"
+    media_types = [
+        "aac", "amr", "avi", "flac", "flv", "m4a", "mkv", "mov",
+        "mp3", "mp4", "mpeg", "ogg", "opus", "wav", "webm", "wma", "wmv",
+    ]
+
+    with st.expander("字幕转录（ASR）", expanded=False):
+        st.caption("上传本地音频/视频后，可选择已配置的 ASR 接口生成 SRT 字幕。")
+        fun_asr_name = config.fun_asr.get("name", "阿里百炼 Fun-ASR")
+        custom_asr_name = config.third_party_asr.get("name", "自定义 ASR")
+        asr_provider_options = {
+            fun_asr_name: "fun_asr",
+            custom_asr_name: "third_party_asr",
+        }
+        default_provider = "third_party_asr" if config.third_party_asr.get("is_default", False) else "fun_asr"
+        provider_values = list(asr_provider_options.values())
+        default_index = provider_values.index(default_provider) if default_provider in provider_values else 0
+        selected_provider_label = st.selectbox(
+            "字幕转录提供商",
+            options=list(asr_provider_options.keys()),
+            index=default_index,
+            key="asr_provider_selection",
+        )
+        asr_provider = asr_provider_options[selected_provider_label]
+        is_default_provider = st.checkbox(
+            "设为默认字幕转录方式",
+            value=asr_provider == default_provider,
+            key=f"asr_provider_default_checkbox_{asr_provider}",
         )
 
-        api_key = st.text_input(
-            "阿里百炼 API Key",
-            value=config.fun_asr.get("api_key", ""),
-            type="password",
-            help="请输入你自己的阿里百炼 API Key；保存配置后会写入本地 config.toml",
-            key="fun_asr_api_key",
-        )
+        if asr_provider == "fun_asr":
+            st.markdown(
+                "API Key 获取地址："
+                "[https://bailian.console.aliyun.com/?tab=model#/api-key]"
+                "(https://bailian.console.aliyun.com/?tab=model#/api-key)"
+            )
+            provider_name = st.text_input(
+                "配置名称",
+                value=fun_asr_name,
+                help="这个名称会显示在字幕转录提供商列表中",
+                key="fun_asr_name",
+            )
+            api_key = st.text_input(
+                "阿里百炼 API Key",
+                value=config.fun_asr.get("api_key", ""),
+                type="password",
+                help="请输入你自己的阿里百炼 API Key；保存配置后会写入本地 config.toml",
+                key="fun_asr_api_key",
+            )
+            response_format = "srt"
+            api_url = ""
+            model = "fun-asr"
+        else:
+            st.info("当前 ASR 接口需支持 multipart/form-data 上传，文件字段名为 file，可返回 SRT、纯文本，或包含 srt/segments/text 字段的 JSON。")
+            provider_name = st.text_input(
+                "配置名称",
+                value=custom_asr_name,
+                help="你可以按实际模型或平台命名，例如 Whisper、本地 ASR、某某云字幕转录",
+                key="third_party_asr_name",
+            )
+            api_url = st.text_input(
+                "ASR API URL",
+                value=config.third_party_asr.get("api_url", ""),
+                help="例如 https://api.siliconflow.cn/v1/audio/transcriptions；如果只填到 /v1，系统会自动补 /audio/transcriptions",
+                key="third_party_asr_api_url",
+            )
+            api_key = st.text_input(
+                "ASR API Key（可选）",
+                value=config.third_party_asr.get("api_key", ""),
+                type="password",
+                help="如果接口需要鉴权，将以 Bearer Token 方式传递",
+                key="third_party_asr_api_key",
+            )
+            model = st.text_input(
+                "ASR 模型名（可选）",
+                value=config.third_party_asr.get("model", ""),
+                help="如果接口支持模型参数，会随 multipart 表单的 model 字段一起提交",
+                key="third_party_asr_model",
+            )
+            response_format_options = ["srt", "json", "text", "verbose_json"]
+            saved_response_format = config.third_party_asr.get("response_format", "srt")
+            response_format_index = (
+                response_format_options.index(saved_response_format)
+                if saved_response_format in response_format_options
+                else 0
+            )
+            response_format = st.selectbox(
+                "ASR 返回格式",
+                options=response_format_options,
+                index=response_format_index,
+                help="硅基流动 SenseVoice 建议选择 srt，避免纯文本导致时间轴不准",
+                key="third_party_asr_response_format",
+            )
+
+        if st.button("保存 ASR 配置", key="save_asr_config"):
+            if asr_provider == "fun_asr":
+                config.fun_asr["name"] = provider_name.strip() or "阿里百炼 Fun-ASR"
+                config.fun_asr["api_key"] = api_key.strip()
+                config.fun_asr["model"] = "fun-asr"
+                if is_default_provider:
+                    config.fun_asr["is_default"] = True
+                    config.third_party_asr["is_default"] = False
+            else:
+                config.third_party_asr["name"] = provider_name.strip() or "自定义 ASR"
+                config.third_party_asr["api_url"] = api_url.strip()
+                config.third_party_asr["api_key"] = api_key.strip()
+                config.third_party_asr["model"] = model.strip()
+                config.third_party_asr["response_format"] = response_format
+                if is_default_provider:
+                    config.third_party_asr["is_default"] = True
+                    config.fun_asr["is_default"] = False
+            config.save_config()
+            st.success("ASR 配置已保存")
+            st.rerun()
+
         uploaded_media = st.file_uploader(
             "上传需要转录的音频/视频",
-            type=[
-                "aac", "amr", "avi", "flac", "flv", "m4a", "mkv", "mov",
-                "mp3", "mp4", "mpeg", "ogg", "opus", "wav", "webm", "wma", "wmv",
-            ],
+            type=media_types,
             accept_multiple_files=False,
-            key="fun_asr_media_uploader",
+            key="asr_media_uploader",
         )
 
-        if st.button("转写生成字幕", key="fun_asr_transcribe"):
-            if not api_key.strip():
-                clear_fun_asr_subtitle_state()
+        if st.button("转写生成字幕", key="asr_transcribe"):
+            if asr_provider == "fun_asr" and not api_key.strip():
+                clear_asr_subtitle_state()
                 st.error("请先输入阿里百炼 API Key")
                 return
+            if asr_provider == "third_party_asr" and not api_url.strip():
+                clear_asr_subtitle_state()
+                st.error("请先输入 ASR API URL")
+                return
             if uploaded_media is None:
-                clear_fun_asr_subtitle_state()
+                clear_asr_subtitle_state()
                 st.error("请先上传需要转录的音频或视频文件")
                 return
 
             try:
-                clear_fun_asr_subtitle_state()
-                from app.services import fun_asr_subtitle
+                clear_asr_subtitle_state()
 
-                config.fun_asr["api_key"] = api_key.strip()
-                config.fun_asr["model"] = "fun-asr"
+                if asr_provider == "fun_asr":
+                    config.fun_asr["name"] = provider_name.strip() or "阿里百炼 Fun-ASR"
+                    config.fun_asr["api_key"] = api_key.strip()
+                    config.fun_asr["model"] = "fun-asr"
+                    if is_default_provider:
+                        config.fun_asr["is_default"] = True
+                        config.third_party_asr["is_default"] = False
+                else:
+                    config.third_party_asr["name"] = provider_name.strip() or "自定义 ASR"
+                    config.third_party_asr["api_url"] = api_url.strip()
+                    config.third_party_asr["api_key"] = api_key.strip()
+                    config.third_party_asr["model"] = model.strip()
+                    config.third_party_asr["response_format"] = response_format
+                    if is_default_provider:
+                        config.third_party_asr["is_default"] = True
+                        config.fun_asr["is_default"] = False
                 config.save_config()
 
-                temp_dir = utils.temp_dir("fun_asr")
+                temp_dir = utils.temp_dir(asr_provider)
                 safe_filename = os.path.basename(uploaded_media.name)
                 media_path = os.path.join(temp_dir, safe_filename)
                 file_name, file_extension = os.path.splitext(safe_filename)
@@ -662,19 +952,33 @@ def render_fun_asr_transcription(tr):
                 with open(media_path, "wb") as f:
                     f.write(uploaded_media.getbuffer())
 
-                subtitle_name = f"{os.path.splitext(os.path.basename(media_path))[0]}_fun_asr.srt"
+                subtitle_name = f"{os.path.splitext(os.path.basename(media_path))[0]}_{asr_provider}.srt"
                 subtitle_path = os.path.join(utils.subtitle_dir(), subtitle_name)
 
-                with st.spinner("正在使用阿里百炼 Fun-ASR 转写字幕，请稍候..."):
-                    generated_path = fun_asr_subtitle.create_with_fun_asr(
-                        local_file=media_path,
-                        subtitle_file=subtitle_path,
-                        api_key=api_key.strip(),
-                    )
+                with st.spinner(f"正在使用{selected_provider_label}转写字幕，请稍候..."):
+                    if asr_provider == "fun_asr":
+                        from app.services import fun_asr_subtitle
+
+                        generated_path = fun_asr_subtitle.create_with_fun_asr(
+                            local_file=media_path,
+                            subtitle_file=subtitle_path,
+                            api_key=api_key.strip(),
+                        )
+                    else:
+                        from app.services import third_party_asr_subtitle
+
+                        generated_path = third_party_asr_subtitle.create_with_third_party_asr(
+                            local_file=media_path,
+                            subtitle_file=subtitle_path,
+                            api_url=api_url.strip(),
+                            api_key=api_key.strip(),
+                            model=model.strip(),
+                            response_format=response_format,
+                        )
 
                 if not generated_path or not os.path.exists(generated_path):
-                    clear_fun_asr_subtitle_state()
-                    st.error("Fun-ASR 转写失败：未生成字幕文件")
+                    clear_asr_subtitle_state()
+                    st.error("字幕转写失败：未生成字幕文件")
                     return
 
                 with open(generated_path, "r", encoding="utf-8") as f:
@@ -683,11 +987,14 @@ def render_fun_asr_transcription(tr):
                 st.session_state['subtitle_path'] = generated_path
                 st.session_state['subtitle_content'] = subtitle_content
                 st.session_state['subtitle_file_processed'] = True
+                config.ui["subtitle_path"] = generated_path
+                config.save_config()
                 st.success(f"字幕转写成功: {os.path.basename(generated_path)}")
+                st.rerun()
             except Exception as e:
-                clear_fun_asr_subtitle_state()
-                logger.error(f"Fun-ASR 字幕转写失败: {traceback.format_exc()}")
-                st.error(f"Fun-ASR 字幕转写失败: {str(e)}")
+                clear_asr_subtitle_state()
+                logger.error(f"字幕转写失败: {traceback.format_exc()}")
+                st.error(f"字幕转写失败: {str(e)}")
 
 
 def render_script_buttons(tr, params):
@@ -706,6 +1013,8 @@ def render_script_buttons(tr, params):
         button_name = "匹配原片画面"
     elif script_path == "movie_montage":
         button_name = "生成电影混剪"
+    elif script_path == "bilibili_rewrite":
+        button_name = "请使用上方 B站文案按钮"
     elif script_path.endswith("json"):
         button_name = tr("Load Video Script")
     else:
@@ -715,6 +1024,7 @@ def render_script_buttons(tr, params):
         not script_path
         or (script_path == "movie_commentary" and is_movie_scene_matching_running())
         or (script_path == "movie_montage" and is_movie_montage_running())
+        or script_path == "bilibili_rewrite"
     )
     if st.button(button_name, key="script_action", disabled=action_disabled):
         if script_path == "auto":
@@ -753,7 +1063,7 @@ def render_script_buttons(tr, params):
 
 def load_script(tr, script_path):
     """加载脚本文件"""
-    if not script_path or script_path in {"file_selection", "upload_script", "auto", "short", "summary", "movie_commentary", "movie_montage"}:
+    if not script_path or script_path in {"file_selection", "upload_script", "auto", "short", "summary", "movie_commentary", "movie_montage", "bilibili_rewrite"}:
         st.warning(tr("Please Select Script File"))
         return
     if not os.path.isfile(script_path):

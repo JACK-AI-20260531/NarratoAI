@@ -97,8 +97,22 @@
 [fun_asr]
     # 阿里百炼 Fun-ASR 字幕转录配置
     # 访问 https://bailian.console.aliyun.com/?tab=model#/api-key 获取你的 API 密钥
+    name = "阿里百炼 Fun-ASR"
     api_key = ""
     model = "fun-asr"
+    is_default = true
+
+[third_party_asr]
+    # 自定义 ASR 字幕转录配置
+    # name 会显示在字幕转录提供商列表中，可按实际平台或模型命名
+    # 接口需支持 multipart/form-data 上传，文件字段名为 file
+    # 可返回 SRT、纯文本，或包含 srt/segments/text 字段的 JSON
+    name = "自定义 ASR"
+    api_url = ""
+    api_key = ""
+    model = ""
+    response_format = "srt"
+    is_default = false
     
 [indextts2]
     # IndexTTS2 语音克隆配置

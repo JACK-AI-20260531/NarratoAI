@@ -514,18 +514,19 @@ def main():
 
     # ===== 显式注册 LLM 提供商（最佳实践）=====
     # 在应用启动时立即注册，确保所有 LLM 功能可用
-    if 'llm_providers_registered' not in st.session_state:
-        try:
-            from app.services.llm.providers import register_all_providers
+    try:
+        from app.services.llm.manager import LLMServiceManager
+        from app.services.llm.providers import register_all_providers
+        if 'llm_providers_registered' not in st.session_state or not LLMServiceManager.is_registered():
             register_all_providers()
             st.session_state['llm_providers_registered'] = True
             logger.info("✅ LLM 提供商注册成功")
-        except Exception as e:
-            logger.error(f"❌ LLM 提供商注册失败: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
-            st.error(f"⚠️ LLM 初始化失败: {str(e)}\n\n请检查配置文件和依赖是否正确安装。")
-            # 不抛出异常，允许应用继续运行（但 LLM 功能不可用）
+    except Exception as e:
+        logger.error(f"❌ LLM 提供商注册失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        st.error(f"⚠️ LLM 初始化失败: {str(e)}\n\n请检查配置文件和依赖是否正确安装。")
+        # 不抛出异常，允许应用继续运行（但 LLM 功能不可用）
 
     # 检测FFmpeg硬件加速，但只打印一次日志（使用 session_state 持久化）
     if 'hwaccel_logged' not in st.session_state:

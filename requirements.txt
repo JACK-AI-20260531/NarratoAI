@@ -31,6 +31,9 @@ tenacity>=9.0.0
 # 如果需要 OpenCV 图像处理，取消注释下面的行
 # opencv-python>=4.11.0.86
 
+# B站/在线视频音频下载依赖
+yt-dlp>=2025.5.22
+
 # 如果需要 CUDA 支持，取消注释下面的行
 # torch>=2.0.0
 # torchvision>=0.15.0

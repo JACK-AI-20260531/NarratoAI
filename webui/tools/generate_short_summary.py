@@ -23,6 +23,17 @@ from app.services.llm.migration_adapter import SubtitleAnalyzerAdapter
 import re
 
 
+def _clean_llm_json_output(output: str) -> str:
+    """清理 LLM 输出中的思考内容和代码块标记。"""
+    output = (output or "").strip()
+    output = re.sub(r"<think>[\s\S]*?</think>", "", output, flags=re.IGNORECASE).strip()
+    output = re.sub(r"^<think>[\s\S]*?(?=```json|```|\{|\[)", "", output, flags=re.IGNORECASE).strip()
+    code_block = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", output, re.IGNORECASE)
+    if code_block:
+        return code_block.group(1).strip()
+    return output
+
+
 def parse_and_fix_json(json_string):
     """
     解析并修复JSON字符串
@@ -38,7 +49,7 @@ def parse_and_fix_json(json_string):
         return None
 
     # 清理字符串
-    json_string = json_string.strip()
+    json_string = _clean_llm_json_output(json_string)
 
     # 尝试直接解析
     try:
